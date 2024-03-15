@@ -1,0 +1,78 @@
+ - name: obtain OS version
+    shell: "cat /etc/redhat-release"
+    register: command_output1
+    tags: OS_Version
+  - debug:
+      var: command_output1.stdout_lines
+    tags: OS_Version
+
+  - name: Check if MQM user is present
+    ansible.builtin.user:
+      name: mqm
+      state: present
+    check_mode: yes
+    register: status
+    tags: Check_User
+
+  - name: Fail if user not present
+    fail:
+      msg: MQM user not present
+    when: status.uid is not defined
+    tags: Check_User
+
+  - name: Unzip and Unarchieve the file
+    unarchive:
+      src: /net/uosdevldm/software/MQM/IBM_MQ_9.2.0_LINUX_X86-64.tar
+      dest: /var/tmp/
+      owner: mqm
+      group: mqm
+    tags: Unzip
+
+
+  - name: Accept the License
+    shell: "/var/tmp/MQServer/mqlicense.sh -accept"
+    register: command_output2
+    tags: License
+  - debug:
+      var: command_output2.stdout_lines
+    tags: License
+
+
+  - name: install RPM Packages
+    yum:
+      name: /var/tmp/MQServer/MQSeriesRuntime-9.2.0-0.x86_64.rpm
+      state: present
+      disable_gpg_check: yes
+    tags: Runtime_Install
+
+
+  - name: Install multiple rpm packages with its dependencies
+    yum:
+      name:
+        - /var/tmp/MQServer/MQSeriesGSKit-9.2.0-0.x86_64.rpm
+        - /var/tmp/MQServer/MQSeriesJRE-9.2.0-0.x86_64.rpm
+        - /var/tmp/MQServer/MQSeriesJava-9.2.0-0.x86_64.rpm
+        - /var/tmp/MQServer/MQSeriesSDK-9.2.0-0.x86_64.rpm
+        - /var/tmp/MQServer/MQSeriesSamples-9.2.0-0.x86_64.rpm
+        - /var/tmp/MQServer/MQSeriesClient-9.2.0-0.x86_64.rpm
+        - /var/tmp/MQServer/MQSeriesServer-9.2.0-0.x86_64.rpm
+      state: present
+      disable_gpg_check: yes
+    tags: Packages
+
+  - name: Get MQ packages list
+    shell: "rpm -qa | grep -i mq"
+    register: command_output3
+    tags: Package_list
+  - debug:
+      var: command_output3.stdout_lines
+    tags: Package_list
+
+  - name: Set as primary install
+    shell: "/opt/mqm/bin/setmqinst -i -p /opt/mqm"
+    register: command_output4
+    tags: Primary_install
+  - debug:
+      var: command_output4.stdout_lines
+    tags: Primary_install
+
