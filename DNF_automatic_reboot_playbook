@@ -44,7 +44,7 @@
       path: /etc/dnf/automatic.conf
       regexp: 'email_from = *'
       firstmatch: true
-      line: 'email_from = root@{{ inventory_hostname }}.standardbank.co.za'
+      line: 'email_from = root@{{ inventory_hostname }}.st.co'
 
   - name: Update Mail list
     lineinfile:
