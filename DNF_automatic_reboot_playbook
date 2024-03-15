@@ -1,0 +1,106 @@
+---
+# Tasks file for dnf-automatic
+  - name: Install dnf-automatic
+    yum:
+      name: dnf-automatic
+      state: latest
+    tags: Install_dnf
+
+#  - name: Install postfix
+#    yum:
+#      name: postfix
+#      state: latest
+#    notify: Reload & Restart postfix
+
+  - name: Perform auto reboot specific tasks
+    when: dnf_automatic_reboot | bool
+    block:
+    - name: Install dependencies needed for reboot
+      yum:
+       name: yum-utils
+       state: installed
+
+  - name: Deploy service and timer units
+    ansible.builtin.template:
+     src: "{{ item }}"
+     dest: "/usr/lib/systemd/system/{{ item }}"
+     owner: root
+     group: root
+     mode: 644
+    loop:
+     - dnf-automatic-reboot.service
+     - dnf-automatic-reboot.timer
+    notify: Reload systemd
+
+  - name: Update emit method
+    lineinfile:
+      path: /etc/dnf/automatic.conf
+      regexp: 'emit_via = *'
+      line: 'emit_via = stdio,email'
+      state: present
+
+  - name: Update Mail from list
+    lineinfile:
+      path: /etc/dnf/automatic.conf
+      regexp: 'email_from = *'
+      firstmatch: true
+      line: 'email_from = root@{{ inventory_hostname }}.standardbank.co.za'
+
+  - name: Update Mail list
+    lineinfile:
+      path: /etc/dnf/automatic.conf
+      regexp: 'email_to = *'
+      firstmatch: true
+      line: 'email_to = {{ mailing_list | default(omit) }}'
+
+  - name: Edit notify-only timer
+    lineinfile:
+      path: /usr/lib/systemd/system/dnf-automatic-notifyonly.timer
+      regexp: 'OnCalendar= *'
+      line: 'OnCalendar={{ Notify_Timer | default("Tue,Fri *-*-* 08:00") }}'
+      state: present
+    notify: Reload & Restart dnf-automatic-notifyonly.timer
+
+  - name: Edit install timer
+    lineinfile:
+      path: /usr/lib/systemd/system/dnf-automatic-install.timer
+      regexp: 'OnCalendar= *'
+      line: 'OnCalendar={{ Update_Timer }}'
+      state: present
+#    notify: Reload & Restart dnf-automatic-install.timer
+
+
+  - name: Edit Random Delay notify timer
+    lineinfile:
+      path: /usr/lib/systemd/system/dnf-automatic-notifyonly.timer
+      regexp: 'RandomizedDelaySec=*'
+      line: 'RandomizedDelaySec= {{ RandomDelay | default(omit) }}'
+      state: present
+    notify: Reload & Restart dnf-automatic-notifyonly.timer
+
+  - name: Edit Random Delay install timer
+    lineinfile:
+      path: /usr/lib/systemd/system/dnf-automatic-install.timer
+      regexp: 'RandomizedDelaySec=*'
+      line: 'RandomizedDelaySec= {{ RandomDelay | default(omit) }}'
+      state: present
+#    notify: Reload & Restart install timer
+
+  - name: Reload & Start/stop dnf-automatic-install.timer
+    systemd:
+     state: "{{ dnf_automatic_install | ternary('restarted', 'stopped') }}"
+     enabled: "{{ dnf_automatic_install  }}"
+     daemon_reload: true
+     name: dnf-automatic-install.timer
+
+  - name: Check status of dnf-automatic-reboot.timer
+    ansible.builtin.systemd:
+      name: dnf-automatic-reboot.timer
+    register: dnf_automatic_reboot_timer
+
+  - name: Set timer state for auto reboot
+    ansible.builtin.systemd:
+     name: dnf-automatic-reboot.timer
+     state: "{{ dnf_automatic_reboot | ternary('restarted', 'stopped') }}"
+     enabled: "{{ dnf_automatic_reboot  }}"
+    when: (not ansible_check_mode and dnf_automatic_reboot) or dnf_automatic_reboot_timer.status["LoadState"] == "loaded"
